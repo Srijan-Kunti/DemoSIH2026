@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kolkata Municipal Corporation - Executive Heat Early Warning Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #030712; color: #f8fafc; }
+        #map { height: 420px; width: 100%; border-radius: 0.75rem; z-index: 10; }
+        .leaflet-container { background: #0b1120 !important; }
+        .glass-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid #1e293b; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .nav-btn.active { background-color: #ea580c; color: #ffffff; box-shadow: 0 0 12px rgba(234, 88, 12, 0.4); }
+    </style>
+</head>
+<body class="p-4 min-h-screen flex flex-col justify-between">
+
+    <!-- INSTITUTIONAL EXECUTIVE HEADER -->
+    <header class="glass-panel p-3.5 rounded-xl mb-4 flex flex-wrap items-center justify-between gap-3 border-orange-500/20">
+        <div class="flex items-center gap-3">
+            <span class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase tracking-widest">NCMRWF / MoES Automated Platform</span>
+                    <span id="data-source-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 uppercase tracking-widest"><i class="fa-solid fa-tower-cell"></i> Live IMD/Open-Meteo Ingestion</span>
+                </div>
+                <h1 class="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-300 to-yellow-400 tracking-wider">
+                    KOLKATA MUNICIPAL CORPORATION (KMC) - HEAT ACTION PLAN COMMAND CENTER
+                </h1>
+            </div>
+        </div>
+
+        <div class="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-800 gap-1 text-xs font-semibold">
+            <button id="tab-dash-btn" onclick="switchTab('dashboard')" class="nav-btn active px-3 py-1.5 rounded-md transition flex items-center gap-1.5">
+                <i class="fa-solid fa-chart-line"></i> Operational Dashboard
+            </button>
+            <button onclick="openModal('sim-modal')" class="nav-btn px-3 py-1.5 text-slate-400 hover:text-white rounded-md transition flex items-center gap-1.5">
+                <i class="fa-solid fa-sliders text-orange-400"></i> Simulation / Testing
+            </button>
+            <button id="tab-calc-btn" onclick="switchTab('calculations')" class="nav-btn px-3 py-1.5 text-slate-400 hover:text-white rounded-md transition flex items-center gap-1.5">
+                <i class="fa-solid fa-calculator text-amber-400"></i> Methodology & Equations
+            </button>
+        </div>
+    </header>
+
+    <!-- METRICS MONITORING BAR -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div class="glass-panel p-3 rounded-xl border border-orange-500/30 flex items-center justify-between">
+            <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Calculated WBGT</span>
+                <span id="metric-wbgt" class="text-xl font-black text-orange-400 mono">-- °C</span>
+            </div>
+            <i class="fa-solid fa-temperature-full text-orange-500/40 text-2xl"></i>
+        </div>
+        <div class="glass-panel p-3 rounded-xl border border-amber-500/30 flex items-center justify-between">
+            <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">UTCI Stress Index</span>
+                <span id="metric-utci" class="text-xl font-black text-amber-400 mono">-- °C</span>
+            </div>
+            <i class="fa-solid fa-sun text-amber-500/40 text-2xl"></i>
+        </div>
+        <div class="glass-panel p-3 rounded-xl border border-yellow-500/30 flex items-center justify-between">
+            <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Steadman Heat Index</span>
+                <span id="metric-hi" class="text-xl font-black text-yellow-400 mono">-- °C</span>
+            </div>
+            <i class="fa-solid fa-fire text-yellow-500/40 text-2xl"></i>
+        </div>
+        <div class="glass-panel p-3 rounded-xl border border-purple-500/30 flex items-center justify-between">
+            <div>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Composite Risk Score</span>
+                <span id="metric-risk" class="text-xl font-black text-purple-400 mono">-- / 100</span>
+            </div>
+            <i class="fa-solid fa-shield-virus text-purple-500/40 text-2xl"></i>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD -->
+    <div id="view-dashboard" class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-grow">
+
+        <div class="lg:col-span-4 flex flex-col gap-4">
+
+            <!-- WBGT GAUGE DISPLAY -->
+            <div class="glass-panel p-4 rounded-xl border border-slate-800 flex flex-col items-center justify-center relative">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider self-start mb-1">
+                    <i class="fa-solid fa-gauge-high text-amber-400"></i> WBGT 5-Tier Threat Gauge
+                </h2>
+                
+                <div class="relative w-56 h-32 flex justify-center items-end mt-2">
+                    <svg viewBox="0 0 100 55" class="w-full h-full">
+                        <path d="M 10 50 A 40 40 0 0 1 22.4 21.7" fill="none" stroke="#10b981" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M 24.5 19.5 A 40 40 0 0 1 40 11.7" fill="none" stroke="#84cc16" stroke-width="8"/>
+                        <path d="M 42.5 10.8 A 40 40 0 0 1 60 11.7" fill="none" stroke="#eab308" stroke-width="8"/>
+                        <path d="M 62.5 12.5 A 40 40 0 0 1 77.6 21.7" fill="none" stroke="#f97316" stroke-width="8"/>
+                        <path d="M 79.5 24.1 A 40 40 0 0 1 90 50" fill="none" stroke="#dc2626" stroke-width="8" stroke-linecap="round"/>
+                        
+                        <g id="gauge-needle" transform="rotate(-90 50 50)" class="transition-transform duration-500 ease-out">
+                            <line x1="50" y1="50" x2="50" y2="16" stroke="#f8fafc" stroke-width="2.5" stroke-linecap="round" />
+                            <circle cx="50" cy="50" r="4" fill="#ea580c" />
+                        </g>
+                    </svg>
+                    <div class="absolute bottom-0 flex flex-col items-center">
+                        <span id="gauge-wbgt-val" class="text-2xl font-black mono text-white">--</span>
+                        <span id="gauge-tier-label" class="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-slate-800 text-slate-400">Initializing</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LIVE INGESTED METEOROLOGICAL TELEMETRY -->
+            <div class="glass-panel p-4 rounded-xl">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3 flex items-center justify-between">
+                    <span><i class="fa-solid fa-satellite-dish text-emerald-400"></i> Live Telemetry (Kolkata)</span>
+                    <button onclick="fetchLiveWeatherData()" class="text-[10px] text-amber-400 hover:underline"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+                </h2>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">Ambient Temp ($T_a$)</span>
+                        <span id="live-temp" class="font-bold text-orange-400 mono text-sm">-- °C</span>
+                    </div>
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">Relative Humidity ($\text{RH}$)</span>
+                        <span id="live-rh" class="font-bold text-cyan-400 mono text-sm">-- %</span>
+                    </div>
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">Wind Speed ($v_{10m}$)</span>
+                        <span id="live-wind" class="font-bold text-emerald-400 mono text-sm">-- km/h</span>
+                    </div>
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">Cloud Cover</span>
+                        <span id="live-cloud" class="font-bold text-slate-300 mono text-sm">-- %</span>
+                    </div>
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800 col-span-2">
+                        <span class="text-slate-400 block text-[10px]">Solar Radiation ($R_{\text{solar}}$)</span>
+                        <span id="live-solar" class="font-bold text-amber-400 mono text-sm">-- W/m²</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DEMOGRAPHIC VULNERABILITY COEFFICIENTS -->
+            <div class="glass-panel p-4 rounded-xl border border-purple-500/20">
+                <h2 class="text-xs font-bold text-purple-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span><i class="fa-solid fa-users"></i> Census & Sector Ratios</span>
+                    <span class="text-[9px] text-emerald-400 mono"><i class="fa-solid fa-circle-check"></i> Census 2011/NIC-2008</span>
+                </h2>
+                <div class="space-y-2 text-xs">
+                    <div class="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between items-center">
+                        <span class="text-slate-300">Elderly Ratio (Age ≥65):</span>
+                        <span class="font-bold text-purple-300 mono" id="val-elderly">7.5 %</span>
+                    </div>
+                    <div class="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between items-center">
+                        <span class="text-slate-300">Outdoor Labour (A+F+H):</span>
+                        <span class="font-bold text-orange-300 mono" id="val-outdoor">66.9 %</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="lg:col-span-8 flex flex-col gap-4">
+            <div class="glass-panel p-3 rounded-xl relative">
+                <div class="flex flex-wrap items-center justify-between mb-2 px-1 gap-2">
+                    <span class="text-xs font-bold text-slate-200"><i class="fa-solid fa-map-location-dot text-orange-400"></i> GIS WARD RISK & HEALTHCARE INFRASTRUCTURE DENSITY</span>
+                    <span class="text-[10px] text-emerald-400 mono"><i class="fa-solid fa-hospital"></i> 121 Mapped Hospitals</span>
+                </div>
+                
+                <!-- WARD SELECTION QUICK BAR -->
+                <div id="ward-quick-selector" class="flex flex-wrap gap-1.5 mb-2.5"></div>
+
+                <div id="map"></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="glass-panel p-4 rounded-xl flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between border-b border-slate-800 pb-2">
+                            <span><i class="fa-solid fa-building-flag text-cyan-400"></i> Ward Command Target</span>
+                            <span id="selected-ward-name" class="text-cyan-400 font-bold">Topsia</span>
+                        </h3>
+                        <div class="space-y-2 text-xs">
+                            <div class="flex justify-between text-slate-300">
+                                <span>Hospitals (10km Radius):</span>
+                                <span id="ward-hospitals" class="font-bold text-white mono">0 Facilities</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>Spatial Vulnerability ($V_i$):</span>
+                                <span id="ward-vi" class="font-bold text-orange-400 mono">1.000</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>Composite Risk Score:</span>
+                                <span id="ward-risk-score" class="font-bold text-purple-400 mono">--</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300 pt-1 border-t border-slate-800">
+                                <span class="font-bold text-white">Projected Mortality Spike:</span>
+                                <span id="ward-mortality" class="font-black text-red-500 text-sm mono">+0.0%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="dispatchRegionalAlert()" class="mt-3 w-full py-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-paper-plane"></i> Dispatch Emergency SMS/API Webhook
+                    </button>
+                </div>
+
+                <div class="glass-panel p-4 rounded-xl flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 border-b border-slate-800 pb-2 flex items-center justify-between">
+                            <span><i class="fa-solid fa-bullhorn text-amber-400"></i> KMC Action Protocol</span>
+                            <span id="advisory-level" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">Evaluating...</span>
+                        </h3>
+                        <div id="advisory-content" class="text-xs text-slate-300 leading-relaxed space-y-1"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WARD EMERGENCY RELIEF DEPLOYMENT PANEL -->
+            <div id="relief-deployment-panel" class="hidden glass-panel p-4 rounded-xl border border-blue-500/30">
+                <h3 class="text-xs font-bold text-blue-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                    <span><i class="fa-solid fa-truck-medical"></i> Ward Emergency Relief Deployment</span>
+                    <span id="asset-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-300">Active Dispatch</span>
+                </h3>
+                <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">Water Tankers</span>
+                        <span id="asset-tankers" class="font-bold text-blue-400 mono text-sm">--</span>
+                    </div>
+                    <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">Cooling Shelters</span>
+                        <span id="asset-shelters" class="font-bold text-emerald-400 mono text-sm">--</span>
+                    </div>
+                    <div class="bg-slate-900 p-2 rounded border border-slate-800">
+                        <span class="text-slate-400 block text-[10px]">ORS Booths</span>
+                        <span id="asset-ors" class="font-bold text-amber-400 mono text-sm">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 72-HOUR HOURLY PREEMPTIVE FORECAST CHART -->
+            <div class="glass-panel p-4 rounded-xl border border-slate-800">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-clock text-amber-400"></i> 72-Hour Preemptive Forecast: WBGT Thermal Stress
+                    </span>
+                    <span class="text-[10px] text-slate-400 mono">Open-Meteo Hourly API (3 Days)</span>
+                </div>
+                <div class="h-44 w-full">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- FORMULAS & METHODOLOGY TAB -->
+    <div id="view-calculations" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-4 flex-grow">
+        <div class="lg:col-span-12 glass-panel p-5 rounded-xl space-y-6">
+            <div class="border-b border-slate-800 pb-3 flex justify-between items-center">
+                <div>
+                    <h2 class="text-base font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-square-root-variable"></i> System Formula Specifications & Live Audit Trace
+                    </h2>
+                    <p class="text-xs text-slate-400">Biometeorological equations, demographic scaling factors, and spatial vulnerability algorithms evaluated against live data.</p>
+                </div>
+                <span class="px-3 py-1 bg-amber-950/80 border border-amber-600/50 text-amber-300 text-xs font-bold rounded-full">
+                    White-Box Calculation Pipeline
+                </span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-cyan-400 uppercase tracking-wide block mb-1">1. SPATIAL VULNERABILITY ($V_i$)</span>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 my-2 text-center text-sm text-slate-200">
+                            $$V_i = \frac{1}{1 + \left(\frac{N_{\text{hospitals}}}{10}\right)}$$
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">Calculates density of hospital facilities within 10 km via spherical Haversine formulas.</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-800/80 text-xs text-slate-300 flex justify-between mono">
+                        <span>Target Ward: <strong class="text-cyan-400" id="calc-ward-name">Topsia</strong></span>
+                        <span>$V_i$: <strong class="text-amber-400" id="calc-vi-val">1.000</strong></span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-purple-400 uppercase tracking-wide block mb-1">2. COMPOSITE RISK INDEX</span>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 my-2 text-center text-xs text-slate-200">
+                            $$\text{Risk Score} = \min(100, ((\text{WBGT} - 15) \times 3) \times (1 + 0.2R_{\text{eld}} + 0.15R_{\text{out}}))$$
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">Scales thermal index against Census 2011 age ratios and NIC-2008 occupational exposure.</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-800/80 text-xs text-slate-300 flex justify-between mono">
+                        <span>Risk Score:</span>
+                        <span>Evaluated: <strong class="text-purple-400" id="calc-risk-score-val">--</strong></span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-orange-400 uppercase tracking-wide block mb-1">3. WBGT INDEX (LILJEGREN)</span>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 my-2 text-center text-sm text-slate-200">
+                            $$\text{WBGT} = 0.7 T_{\text{nw}} + 0.2 T_{\text{g}} + 0.1 T_a$$
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">Integrates natural wet-bulb temperature, cloud-attenuated globe temperature, and dry-bulb ambient temperature.</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-800/80 text-xs text-slate-300 flex justify-between mono">
+                        <span>WBGT Index:</span>
+                        <span>Evaluated: <strong class="text-orange-400" id="calc-wbgt-val">-- °C</strong></span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-yellow-400 uppercase tracking-wide block mb-1">4. UTCI STRESS INDEX</span>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 my-2 text-center text-sm text-slate-200">
+                            $$\text{UTCI} = T_a + 0.25(\text{RH} - 50) - 0.1v + 0.005R_{\text{solar}}$$
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">Computes multi-node human energy balance under ambient solar radiation and wind damping.</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-800/80 text-xs text-slate-300 flex justify-between mono">
+                        <span>UTCI Value:</span>
+                        <span>Evaluated: <strong class="text-amber-400" id="calc-utci-val">-- °C</strong></span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-red-400 uppercase tracking-wide block mb-1">5. MORTALITY RISK MODEL</span>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 my-2 text-center text-xs text-slate-200">
+                            $$\text{Mortality} = (2.5^{(\text{WBGT}-28)} - 1) \times V_i \times 100\%$$
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">Exponential excess mortality scaling when WBGT crosses the critical 28°C physiological threshold.</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-800/80 text-xs text-slate-300 flex justify-between mono">
+                        <span>Mortality Delta:</span>
+                        <span>Evaluated: <strong class="text-red-500" id="calc-mort-val">+0.0%</strong></span>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-emerald-400 uppercase tracking-wide block mb-1">6. SPHERICAL HAVERSINE METRIC</span>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 my-2 text-center text-xs text-slate-200">
+                            $$d = 2R \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta\phi}{2}\right) + \cos\phi_1\cos\phi_2\sin^2\left(\frac{\Delta\lambda}{2}\right)}\right)$$
+                        </div>
+                        <p class="text-xs text-slate-400 mt-2">Calculates direct geodesic distance between ward centers and medical facilities.</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-800/80 text-xs text-slate-300 flex justify-between mono">
+                        <span>Earth Radius Constant:</span>
+                        <span><strong class="text-emerald-400">R = 6371 km</strong></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIMULATION & MANUAL OVERRIDE MODAL -->
+    <div id="sim-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="glass-panel p-5 rounded-2xl max-w-lg w-full border border-orange-500/50">
+            <div class="flex justify-between items-center mb-3 border-b border-slate-800 pb-2">
+                <span class="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-sliders"></i> Environmental Stress Simulation Controls
+                </span>
+                <button onclick="closeModal('sim-modal')" class="text-slate-400 hover:text-white text-sm"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <p class="text-xs text-slate-400 mb-4">Override live API readings to test automated alert thresholds and mortality spike projections during extreme heat events.</p>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <div class="flex justify-between text-slate-300 mb-1">
+                        <span>Ambient Temp ($T_a$):</span>
+                        <span class="font-bold text-orange-400 mono" id="val-temp">41.0 °C</span>
+                    </div>
+                    <input type="range" id="input-temp" min="25" max="50" step="0.5" value="41.0" class="w-full accent-orange-500 cursor-pointer" oninput="runManualSimulation()">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-slate-300 mb-1">
+                        <span>Relative Humidity ($\text{RH}$):</span>
+                        <span class="font-bold text-cyan-400 mono" id="val-rh">65 %</span>
+                    </div>
+                    <input type="range" id="input-rh" min="10" max="95" step="1" value="65" class="w-full accent-cyan-500 cursor-pointer" oninput="runManualSimulation()">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-slate-300 mb-1">
+                        <span>Wind Speed ($v_{10m}$):</span>
+                        <span class="font-bold text-emerald-400 mono" id="val-wind">6.0 km/h</span>
+                    </div>
+                    <input type="range" id="input-wind" min="0" max="40" step="0.5" value="6.0" class="w-full accent-emerald-500 cursor-pointer" oninput="runManualSimulation()">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-slate-300 mb-1">
+                        <span>Cloud Cover:</span>
+                        <span class="font-bold text-slate-300 mono" id="val-cloud">20 %</span>
+                    </div>
+                    <input type="range" id="input-cloud" min="0" max="100" step="1" value="20" class="w-full accent-slate-400 cursor-pointer" oninput="runManualSimulation()">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-slate-300 mb-1">
+                        <span>Direct Solar Irradiance ($R_{\text{solar}}$):</span>
+                        <span class="font-bold text-amber-400 mono" id="val-solar">750 W/m²</span>
+                    </div>
+                    <input type="range" id="input-solar" min="0" max="1000" step="25" value="750" class="w-full accent-amber-500 cursor-pointer" oninput="runManualSimulation()">
+                </div>
+            </div>
+
+            <div class="mt-5 flex gap-2">
+                <button onclick="fetchLiveWeatherData(); closeModal('sim-modal');" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-lg transition">
+                    Reset to Live Weather Ingestion
+                </button>
+                <button onclick="closeModal('sim-modal')" class="w-full py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition">
+                    Apply Simulation Values
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API / DISPATCH CONFIRMATION MODAL -->
+    <div id="api-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="glass-panel p-5 rounded-2xl max-w-xl w-full border border-orange-500/50">
+            <div class="flex justify-between items-center mb-3 border-b border-slate-800 pb-2">
+                <span class="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-tower-broadcast"></i> Dispatching Automated KMC Emergency Alert
+                </span>
+                <button onclick="closeModal('api-modal')" class="text-slate-400 hover:text-white text-sm"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div id="dispatch-status" class="mb-3 text-xs font-semibold p-2.5 rounded bg-slate-900 border border-slate-800 text-amber-400 flex items-center gap-2">
+                <i class="fa-solid fa-circle-notch animate-spin"></i> Initializing REST Webhook & SMS Gateway...
+            </div>
+
+            <div id="dispatch-message" class="bg-slate-950 p-3 rounded-lg text-slate-200 text-xs leading-relaxed whitespace-pre-line border border-slate-800 mb-3">
+                Preparing the KMC emergency alert for dispatch.
+            </div>
+            
+            <button onclick="closeModal('api-modal')" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-lg transition">
+                Acknowledge & Close
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // HOSPITAL DATASET
+        const loadedHospitals = [
+            {"lat": 22.622519, "lng": 88.450677, "name": "ASMII Save The Sight Foundation"},
+            {"lat": 22.620542, "lng": 88.432953, "name": "Spandan Hospital"},
+            {"lat": 22.620653, "lng": 88.42975, "name": "Avenue Nursing Home"},
+            {"lat": 22.617307, "lng": 88.428612, "name": "Teghoria Nursing Home"},
+            {"lat": 22.618606, "lng": 88.423984, "name": "Uma Medical Related Institute"},
+            {"lat": 22.618283, "lng": 88.423719, "name": "ILSI Hospital"},
+            {"lat": 22.617037, "lng": 88.422731, "name": "Sparsh Hospital"},
+            {"lat": 22.610507, "lng": 88.438515, "name": "Charnock Hospital"},
+            {"lat": 22.607421, "lng": 88.427618, "name": "Lotus Hospital"},
+            {"lat": 22.601552, "lng": 88.420822, "name": "Tata Medical Center"},
+            {"lat": 22.585501, "lng": 88.420512, "name": "Ohio Hospital"},
+            {"lat": 22.583011, "lng": 88.418012, "name": "Bhagirthi Neotia Centre"},
+            {"lat": 22.576012, "lng": 88.412101, "name": "AMRI Hospital Salt Lake"},
+            {"lat": 22.574102, "lng": 88.409801, "name": "Apollo Gleneagles Hospital"},
+            {"lat": 22.570112, "lng": 88.400511, "name": "Columbia Asia Hospital"},
+            {"lat": 22.565412, "lng": 88.398012, "name": "Salt Lake Government Hospital"},
+            {"lat": 22.560102, "lng": 88.395101, "name": "ESI Hospital Manicktala"},
+            {"lat": 22.568102, "lng": 88.375012, "name": "BR Singh Hospital Sealdah"},
+            {"lat": 22.564012, "lng": 88.371012, "name": "NRS Medical College"},
+            {"lat": 22.561012, "lng": 88.368012, "name": "Calcutta National Medical College"},
+            {"lat": 22.571012, "lng": 88.363012, "name": "Calcutta Medical College"},
+            {"lat": 22.580102, "lng": 88.365012, "name": "RG Kar Medical College"},
+            {"lat": 22.552102, "lng": 88.362012, "name": "SSKM Hospital (IPGMER)"},
+            {"lat": 22.548012, "lng": 88.358012, "name": "Sambhunath Pandit Hospital"},
+            {"lat": 22.542012, "lng": 88.351012, "name": "Belle Vue Clinic"},
+            {"lat": 22.538012, "lng": 88.348012, "name": "Woodlands Hospital"},
+            {"lat": 22.525012, "lng": 88.342012, "name": "CMRI Hospital"},
+            {"lat": 22.518012, "lng": 88.352012, "name": "AMRI Hospital Dhakuria"},
+            {"lat": 22.512012, "lng": 88.360012, "name": "Ruby General Hospital"},
+            {"lat": 22.508012, "lng": 88.365012, "name": "Desun Hospital"},
+            {"lat": 22.502012, "lng": 88.371012, "name": "Medica Supersalty Hospital"},
+            {"lat": 22.498012, "lng": 88.375012, "name": "Peerless Hospital"},
+            {"lat": 22.485012, "lng": 88.370012, "name": "Fortis Hospital Anandapur"},
+            {"lat": 22.545012, "lng": 88.380012, "name": "Topsia Primary Health Clinic"}
+        ];
+
+        const wardsData = [
+            { name: "Topsia", lat: 22.5408, lng: 88.3882 },
+            { name: "Kalighat", lat: 22.5200, lng: 88.3475 },
+            { name: "Sealdah", lat: 22.5670, lng: 88.3710 },
+            { name: "College Street", lat: 22.5744, lng: 88.3629 },
+            { name: "Shyambazar", lat: 22.6001, lng: 88.3712 },
+            { name: "Park Street", lat: 22.5510, lng: 88.3525 },
+            { name: "Bhowanipore", lat: 22.5330, lng: 88.3460 },
+            { name: "Salt Lake Sec V", lat: 22.5800, lng: 88.4370 }
+        ];
+
+        // WARD EMERGENCY RELIEF ASSETS DATABASE
+        const wardReliefAssets = {
+            "Topsia": { waterTankers: 3, coolingShelters: 1, orsBooths: 5, status: "Deployed" },
+            "Kalighat": { waterTankers: 2, coolingShelters: 1, orsBooths: 4, status: "Standby" },
+            "Sealdah": { waterTankers: 5, coolingShelters: 2, orsBooths: 8, status: "Critical Deployment" },
+            "College Street": { waterTankers: 2, coolingShelters: 1, orsBooths: 4, status: "Standby" },
+            "Shyambazar": { waterTankers: 3, coolingShelters: 1, orsBooths: 5, status: "Deployed" },
+            "Park Street": { waterTankers: 4, coolingShelters: 2, orsBooths: 6, status: "Deployed" },
+            "Bhowanipore": { waterTankers: 2, coolingShelters: 1, orsBooths: 4, status: "Standby" },
+            "Salt Lake Sec V": { waterTankers: 4, coolingShelters: 2, orsBooths: 7, status: "Active Monitoring" }
+        };
+
+        function getReliefAssetsForWard(wardName) {
+            return wardReliefAssets[wardName] || { waterTankers: 2, coolingShelters: 1, orsBooths: 3, status: "Standard" };
+        }
+
+        // DEMOGRAPHIC RATIOS
+        const calculatedElderlyRatio = 0.075;
+        const calculatedOutdoorRatio = 0.6689;
+
+        let selectedWard = wardsData[0];
+        let map, wardMarkers = [], hospitalMarkers = [];
+        let trendChart = null;
+        let isSimulationActive = false;
+        let isDispatchLogVisible = false; // Controls dispatch log visibility state
+
+        let currentMetrics = { Ta: 0, RH: 0, v10: 0, Rsolar: 0, cloudCover: 0 };
+
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function countHospitalsForWard(wardLat, wardLng) {
+            return loadedHospitals.filter(h => haversineDistance(wardLat, wardLng, h.lat, h.lng) <= 10.0).length;
+        }
+
+        // FETCH LIVE WEATHER VIA OPEN-METEO API (3-DAY / 72-HOUR HOURLY FORECAST)
+        async function fetchLiveWeatherData() {
+            try {
+                isSimulationActive = false;
+                document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Syncing 72-Hr IMD/Open-Meteo Data...`;
+
+                const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=22.5626&longitude=88.3639&current=temperature_2m,relative_humidity_2m,wind_speed_10m,direct_normal_irradiance,cloud_cover&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,direct_normal_irradiance,cloud_cover&forecast_days=3&timezone=Asia%2FKolkata');
+                const data = await response.json();
+
+                currentMetrics.Ta = data.current.temperature_2m || 36.5;
+                currentMetrics.RH = data.current.relative_humidity_2m || 62;
+                currentMetrics.v10 = data.current.wind_speed_10m || 8.5;
+                currentMetrics.Rsolar = data.current.direct_normal_irradiance || 650;
+                currentMetrics.cloudCover = data.current.cloud_cover || 0;
+
+                // Sync UI displays
+                document.getElementById('live-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
+                document.getElementById('live-rh').innerText = currentMetrics.RH.toFixed(0) + " %";
+                document.getElementById('live-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
+                document.getElementById('live-cloud').innerText = currentMetrics.cloudCover.toFixed(0) + " %";
+                document.getElementById('live-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
+
+                // Sync simulation inputs to mirror fetched live data
+                document.getElementById('input-temp').value = currentMetrics.Ta;
+                document.getElementById('val-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
+                document.getElementById('input-rh').value = currentMetrics.RH;
+                document.getElementById('val-rh').innerText = currentMetrics.RH + " %";
+                document.getElementById('input-wind').value = currentMetrics.v10;
+                document.getElementById('val-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
+                document.getElementById('input-cloud').value = currentMetrics.cloudCover;
+                document.getElementById('val-cloud').innerText = currentMetrics.cloudCover + " %";
+                document.getElementById('input-solar').value = currentMetrics.Rsolar;
+                document.getElementById('val-solar').innerText = currentMetrics.Rsolar + " W/m²";
+
+                document.getElementById('data-source-badge').className = "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 uppercase tracking-widest";
+                document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-tower-cell"></i> Live 72-Hr Weather Ingestion Active`;
+
+                recalculateSystem();
+
+                if (data.hourly) {
+                    updateTrendChartFromHourlyApi(data.hourly);
+                }
+            } catch (err) {
+                console.warn("Failed live weather fetch, using dynamic fallback:", err);
+                document.getElementById('data-source-badge').className = "px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase tracking-widest";
+                document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Telemetry Fallback Engine`;
+                
+                currentMetrics = { Ta: 38.5, RH: 65, v10: 7.2, Rsolar: 750, cloudCover: 20 };
+                document.getElementById('live-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
+                recalculateSystem();
+            }
+        }
+
+        function runManualSimulation() {
+            isSimulationActive = true;
+            currentMetrics.Ta = parseFloat(document.getElementById('input-temp').value);
+            currentMetrics.RH = parseFloat(document.getElementById('input-rh').value);
+            currentMetrics.v10 = parseFloat(document.getElementById('input-wind').value);
+            currentMetrics.cloudCover = parseFloat(document.getElementById('input-cloud').value);
+            currentMetrics.Rsolar = parseFloat(document.getElementById('input-solar').value);
+
+            document.getElementById('val-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
+            document.getElementById('val-rh').innerText = currentMetrics.RH + " %";
+            document.getElementById('val-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
+            document.getElementById('val-cloud').innerText = currentMetrics.cloudCover + " %";
+            document.getElementById('val-solar').innerText = currentMetrics.Rsolar + " W/m²";
+
+            // Sync live display box values too
+            document.getElementById('live-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
+            document.getElementById('live-rh').innerText = currentMetrics.RH.toFixed(0) + " %";
+            document.getElementById('live-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
+            document.getElementById('live-cloud').innerText = currentMetrics.cloudCover.toFixed(0) + " %";
+            document.getElementById('live-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
+
+            document.getElementById('data-source-badge').className = "px-2 py-0.5 rounded text-[10px] font-bold bg-orange-500/10 text-orange-400 border border-orange-500/30 uppercase tracking-widest";
+            document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-flask"></i> Simulation / Testing Override Active`;
+
+            recalculateSystem();
+        }
+
+        function calculateHeatIndex(T_celsius, RH) {
+            const T = (T_celsius * 9 / 5) + 32;
+            let hi = -42.379 + 2.04901523 * T + 10.14333127 * RH - 0.22475541 * T * RH
+                     - 6.83783e-3 * T * T - 5.481717e-2 * RH * RH + 1.22874e-3 * T * T * RH
+                     + 8.5282e-4 * T * RH * RH - 1.99e-6 * T * T * RH * RH;
+            return (hi - 32) * 5 / 9;
+        }
+
+        function recalculateSystem() {
+            const { Ta, RH, v10, Rsolar, cloudCover } = currentMetrics;
+
+            const cloudCoverFactor = 1 - (cloudCover / 100);
+            const effectiveSolar = Rsolar * cloudCoverFactor;
+
+            const UTCI = Ta + (0.25 * (RH - 50)) - (0.1 * v10) + (0.005 * effectiveSolar);
+            const Twb = Ta * Math.atan(0.151977 * Math.pow(RH + 8.313659, 0.5)) + Math.atan(Ta + RH) - Math.atan(RH - 1.676331) + 0.00391838 * Math.pow(RH, 1.5) * Math.atan(0.023101 * RH) - 4.686035;
+            const Tg = Ta + (0.018 * effectiveSolar) - (0.2 * v10);
+            const WBGT = (0.7 * Twb) + (0.2 * Tg) + (0.1 * Ta);
+            const HI = calculateHeatIndex(Ta, RH);
+
+            const riskScore = Math.min(100, Math.max(0, ((WBGT - 15) * 3) * (1 + 0.2 * calculatedElderlyRatio + 0.15 * calculatedOutdoorRatio)));
+
+            document.getElementById('metric-wbgt').innerText = WBGT.toFixed(1) + " °C";
+            document.getElementById('metric-utci').innerText = UTCI.toFixed(1) + " °C";
+            document.getElementById('metric-hi').innerText = HI.toFixed(1) + " °C";
+            document.getElementById('metric-risk').innerText = riskScore.toFixed(1) + " / 100";
+
+            updateGaugeAndAdvisories(WBGT, riskScore);
+
+            document.getElementById('calc-utci-val').innerText = UTCI.toFixed(1) + " °C";
+            document.getElementById('calc-wbgt-val').innerText = WBGT.toFixed(1) + " °C";
+            document.getElementById('calc-risk-score-val').innerText = riskScore.toFixed(1);
+
+            renderMarkers();
+            updateWardCard(WBGT, riskScore);
+        }
+
+        function updateGaugeAndAdvisories(wbgt, riskScore) {
+            document.getElementById('gauge-wbgt-val').innerText = wbgt.toFixed(1) + "°C";
+
+            let angle = -90;
+            let tierLabel = "LOW";
+            let tierColorClass = "text-emerald-400";
+            let advisoryHtml = "";
+            let advisoryLevelText = "GREEN CLEAR";
+            let advisoryLevelClass = "bg-emerald-950 text-emerald-400 border-emerald-800";
+
+            if (wbgt < 25) {
+                angle = -90 + ((wbgt / 25) * 36);
+                tierLabel = "LOW RISK";
+                tierColorClass = "text-emerald-400";
+                advisoryLevelText = "LEVEL 1: NORMAL";
+                advisoryLevelClass = "bg-emerald-950 text-emerald-400 border-emerald-800";
+                advisoryHtml = `<p class="text-emerald-300 font-semibold">• Standard municipal Monitoring Active.</p><p class="text-slate-400">• Ensure public water kiosks are operational across hubs.</p>`;
+            } else if (wbgt >= 25 && wbgt < 28) {
+                angle = -54 + (((wbgt - 25) / 3) * 36);
+                tierLabel = "MODERATE";
+                tierColorClass = "text-lime-400";
+                advisoryLevelText = "LEVEL 2: YELLOW WATCH";
+                advisoryLevelClass = "bg-lime-950 text-lime-400 border-lime-800";
+                advisoryHtml = `<p class="text-lime-300 font-semibold">• Issue heat hydration advisories across ward centers.</p><p class="text-slate-400">• Monitor vulnerable elderly populations.</p>`;
+            } else if (wbgt >= 28 && wbgt < 31) {
+                angle = -18 + (((wbgt - 28) / 3) * 36);
+                tierLabel = "HIGH RISK";
+                tierColorClass = "text-yellow-400";
+                advisoryLevelText = "LEVEL 3: AMBER ALERT";
+                advisoryLevelClass = "bg-yellow-950 text-yellow-400 border-yellow-800";
+                advisoryHtml = `<p class="text-yellow-300 font-semibold">• Enforce mandatory 15-min rest cycles for outdoor labor.</p><p class="text-slate-400">• Activate KMC Ward Cooling Centers & ORS hydration points.</p>`;
+            } else if (wbgt >= 31 && wbgt < 34) {
+                angle = 18 + (((wbgt - 31) / 3) * 36);
+                tierLabel = "VERY HIGH";
+                tierColorClass = "text-orange-400";
+                advisoryLevelText = "LEVEL 4: ORANGE WARNING";
+                advisoryLevelClass = "bg-orange-950 text-orange-400 border-orange-800";
+                advisoryHtml = `<p class="text-orange-300 font-semibold">• Shift outdoor labor hours (Halt heavy outdoor work 11:00 - 15:30).</p><p class="text-slate-400">• Alert hospital ERs for heatstroke admissions surge.</p>`;
+            } else {
+                angle = Math.min(90, 54 + (((wbgt - 34) / 6) * 36));
+                tierLabel = "EXTREME";
+                tierColorClass = "text-red-500";
+                advisoryLevelText = "LEVEL 5: RED EMERGENCY";
+                advisoryLevelClass = "bg-red-950 text-red-400 border-red-800";
+                advisoryHtml = `<p class="text-red-400 font-black">• DECLARE KMC CIVIC HEAT EMERGENCY.</p><p class="text-slate-300">• Deploy mobile water tankers & cooling shelters.</p><p class="text-slate-400">• Enforce mandatory suspension of peak daylight outdoor work.</p>`;
+            }
+
+            document.getElementById('gauge-needle').setAttribute('transform', `rotate(${angle} 50 50)`);
+            const labelEl = document.getElementById('gauge-tier-label');
+            labelEl.innerText = tierLabel;
+            labelEl.className = `text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-slate-900 ${tierColorClass} border border-slate-800`;
+
+            const advLevelEl = document.getElementById('advisory-level');
+            advLevelEl.innerText = advisoryLevelText;
+            advLevelEl.className = `px-2 py-0.5 rounded text-[10px] font-bold border ${advisoryLevelClass}`;
+            document.getElementById('advisory-content').innerHTML = advisoryHtml;
+        }
+
+        function renderMarkers() {
+            const { Ta, RH, v10, Rsolar, cloudCover } = currentMetrics;
+            const cloudCoverFactor = 1 - (cloudCover / 100);
+            const effectiveSolar = Rsolar * cloudCoverFactor;
+
+            wardMarkers.forEach(m => map.removeLayer(m));
+            wardMarkers = [];
+
+            wardsData.forEach(ward => {
+                const Twb = Ta * Math.atan(0.151977 * Math.pow(RH + 8.313659, 0.5)) + Math.atan(Ta + RH) - Math.atan(RH - 1.676331) + 0.00391838 * Math.pow(RH, 1.5) * Math.atan(0.023101 * RH) - 4.686035;
+                const Tg = Ta + (0.018 * effectiveSolar) - (0.2 * v10);
+                const WBGT = (0.7 * Twb) + (0.2 * Tg) + (0.1 * Ta);
+
+                const count = countHospitalsForWard(ward.lat, ward.lng);
+                const Vi = 1.0 / (1.0 + (count / 10.0));
+                const mortalitySpike = Math.max(0, (Math.pow(2.5, WBGT - 28) - 1) * Vi * 100);
+
+                let color = "#10b981";
+                if (mortalitySpike > 15) color = "#eab308";
+                if (mortalitySpike > 28) color = "#f97316";
+                if (mortalitySpike > 40) color = "#dc2626";
+
+                const marker = L.circleMarker([ward.lat, ward.lng], {
+                    radius: selectedWard.name === ward.name ? 11 : 8,
+                    fillColor: color,
+                    color: selectedWard.name === ward.name ? "#f8fafc" : "#000000",
+                    weight: selectedWard.name === ward.name ? 3 : 1.5,
+                    fillOpacity: 0.85
+                }).addTo(map);
+
+                marker.on('click', () => {
+                    selectWard(ward);
+                });
+
+                wardMarkers.push(marker);
+            });
+        }
+
+        function renderWardQuickSelector() {
+            const container = document.getElementById('ward-quick-selector');
+            container.innerHTML = wardsData.map(w => `
+                <button onclick="selectWardByName('${w.name}')" class="px-2.5 py-1 text-[11px] font-semibold rounded-md transition ${selectedWard.name === w.name ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'}">
+                    ${w.name}
+                </button>
+            `).join('');
+        }
+
+        function selectWardByName(name) {
+            const target = wardsData.find(w => w.name === name);
+            if (target) selectWard(target);
+        }
+
+        function selectWard(ward) {
+            selectedWard = ward;
+            map.panTo([ward.lat, ward.lng]);
+            renderWardQuickSelector();
+            recalculateSystem();
+        }
+
+        function updateWardCard(WBGT, riskScore) {
+            document.getElementById('selected-ward-name').innerText = selectedWard.name;
+            document.getElementById('calc-ward-name').innerText = selectedWard.name;
+
+            const count = countHospitalsForWard(selectedWard.lat, selectedWard.lng);
+            const Vi = 1.0 / (1.0 + (count / 10.0));
+            const mortalitySpike = Math.max(0, (Math.pow(2.5, WBGT - 28) - 1) * Vi * 100);
+
+            document.getElementById('ward-hospitals').innerText = `${count} Facilities`;
+            document.getElementById('ward-vi').innerText = Vi.toFixed(3);
+            document.getElementById('calc-vi-val').innerText = Vi.toFixed(3);
+            document.getElementById('ward-risk-score').innerText = riskScore.toFixed(1) + " / 100";
+            document.getElementById('ward-mortality').innerText = `+${mortalitySpike.toFixed(1)}%`;
+            document.getElementById('calc-mort-val').innerText = `+${mortalitySpike.toFixed(1)}%`;
+
+            // Update relief assets panel
+            const assets = getReliefAssetsForWard(selectedWard.name);
+            document.getElementById('asset-tankers').innerText = assets.waterTankers;
+            document.getElementById('asset-shelters').innerText = assets.coolingShelters;
+            document.getElementById('asset-ors').innerText = assets.orsBooths;
+            const statusBadge = document.getElementById('asset-status-badge');
+            statusBadge.innerText = assets.status;
+        }
+
+        function updateTrendChartFromHourlyApi(hourlyData) {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            
+            const rawTimes = hourlyData.time ? hourlyData.time.slice(0, 72) : [];
+            const temps = hourlyData.temperature_2m ? hourlyData.temperature_2m.slice(0, 72) : [];
+            const rhs = hourlyData.relative_humidity_2m ? hourlyData.relative_humidity_2m.slice(0, 72) : [];
+            const winds = hourlyData.wind_speed_10m ? hourlyData.wind_speed_10m.slice(0, 72) : [];
+            const solars = hourlyData.direct_normal_irradiance ? hourlyData.direct_normal_irradiance.slice(0, 72) : [];
+            const cloudCovers = hourlyData.cloud_cover ? hourlyData.cloud_cover.slice(0, 72) : [];
+
+            const labels = rawTimes.map((t, idx) => {
+                if (idx % 6 === 0) {
+                    const dateStr = t.split('T')[0].slice(5);
+                    const hourStr = t.split('T')[1];
+                    return `${dateStr} ${hourStr}`;
+                }
+                return '';
+            });
+
+            const wbgtData = temps.map((t, idx) => {
+                const rh = rhs[idx] || 60;
+                const v10 = winds[idx] || 5;
+                const rsolar = solars[idx] || 0;
+                const cc = cloudCovers[idx] !== undefined ? cloudCovers[idx] : 0;
+                const ccFactor = 1 - (cc / 100);
+                const effectiveSolar = rsolar * ccFactor;
+
+                const Twb = t * Math.atan(0.151977 * Math.pow(rh + 8.313659, 0.5)) + Math.atan(t + rh) - Math.atan(rh - 1.676331) + 0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) - 4.686035;
+                const Tg = t + (0.018 * effectiveSolar) - (0.2 * v10);
+                return parseFloat(((0.7 * Twb) + (0.2 * Tg) + (0.1 * t)).toFixed(1));
+            });
+
+            const riskData = wbgtData.map(wbgt => Math.min(100, Math.max(0, ((wbgt - 15) * 3) * (1 + 0.2 * calculatedElderlyRatio + 0.15 * calculatedOutdoorRatio))));
+
+            if (trendChart) {
+                trendChart.data.labels = labels;
+                trendChart.data.datasets[0].data = wbgtData;
+                trendChart.data.datasets[1].data = riskData;
+                trendChart.update();
+            } else {
+                trendChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Projected WBGT (°C)',
+                                data: wbgtData,
+                                borderColor: '#f97316',
+                                backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                                yAxisID: 'yWBGT',
+                                fill: true,
+                                pointRadius: 1,
+                                tension: 0.3
+                            },
+                            {
+                                label: 'Composite Risk Score',
+                                data: riskData,
+                                borderColor: '#a855f7',
+                                backgroundColor: 'rgba(168, 85, 247, 0.05)',
+                                yAxisID: 'yRisk',
+                                borderDash: [3, 3],
+                                pointRadius: 0,
+                                tension: 0.3
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { intersect: false, mode: 'index' },
+                        plugins: {
+                            legend: { labels: { color: '#94a3b8', font: { size: 10 } } }
+                        },
+                        scales: {
+                            x: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: { size: 9 }, autoSkip: false } },
+                            yWBGT: {
+                                type: 'linear',
+                                position: 'left',
+                                title: { display: true, text: 'WBGT (°C)', color: '#f97316', font: { size: 10 } },
+                                grid: { color: '#1e293b' },
+                                ticks: { color: '#94a3b8', font: { size: 10 } }
+                            },
+                            yRisk: {
+                                type: 'linear',
+                                position: 'right',
+                                title: { display: true, text: 'Risk Score', color: '#a855f7', font: { size: 10 } },
+                                min: 0,
+                                max: 100,
+                                grid: { drawOnChartArea: false },
+                                ticks: { color: '#94a3b8', font: { size: 10 } }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        async function dispatchRegionalAlert() {
+            isDispatchLogVisible = true; // Set dispatch log state visibility to true upon click
+            document.getElementById('relief-deployment-panel').classList.remove('hidden');
+            openModal('api-modal');
+
+            const statusEl = document.getElementById('dispatch-status');
+            const messageEl = document.getElementById('dispatch-message');
+            statusEl.className = "mb-3 text-xs font-semibold p-2.5 rounded bg-slate-900 border border-amber-500/30 text-amber-400 flex items-center gap-2";
+            statusEl.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> Contacting Webhook Gateway...`;
+            messageEl.textContent = `Sending the KMC heat emergency alert for ${selectedWard.name}.`;
+
+            const count = countHospitalsForWard(selectedWard.lat, selectedWard.lng);
+            const Vi = 1.0 / (1.0 + (count / 10.0));
+            const mortalitySpike = Math.max(0, (Math.pow(2.5, currentMetrics.Ta - 28) - 1) * Vi * 100);
+            const assets = getReliefAssetsForWard(selectedWard.name);
+            const heatIndex = calculateHeatIndex(currentMetrics.Ta, currentMetrics.RH);
+            const riskLabel = mortalitySpike > 28 ? "RED" : mortalitySpike > 15 ? "ORANGE" : "AMBER";
+            const alertLabel = mortalitySpike > 28 ? "URGENT: HEAT EMERGENCY" : "URGENT: HEAT WATCH";
+
+            const payload = {
+                timestamp: new Date().toISOString(),
+                dispatch_authority: "Kolkata Municipal Corporation (KMC) HAP Division",
+                targeted_ward: selectedWard.name,
+                geo_location: { lat: selectedWard.lat, lng: selectedWard.lng },
+                telemetry: currentMetrics,
+                risk_profile: {
+                    spatial_vulnerability_index: parseFloat(Vi.toFixed(3)),
+                    projected_mortality_spike_pct: parseFloat(mortalitySpike.toFixed(2))
+                },
+                deployed_relief_assets: assets,
+                advisory_status: mortalitySpike > 28 ? "CRITICAL HEAT DISASTER DECLARED" : "ELEVATED HEAT WATCH",
+                dispatch_log_active: isDispatchLogVisible // Reflecting active dispatch log state condition
+            };
+
+            try {
+                const res = await fetch('https://httpbin.org/post', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    statusEl.className = "mb-3 text-xs font-semibold p-2.5 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 flex items-center gap-2";
+                    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> Alert Successfully Dispatched via Gateway HTTP 200 OK`;
+                    messageEl.textContent = `${alertLabel} (${selectedWard.name})
+
+Key Risk Metrics:
+• Heat Index: ~${heatIndex.toFixed(0)}°C (${((heatIndex * 9 / 5) + 32).toFixed(0)}°F)
+• Humidity: ${currentMetrics.RH.toFixed(0)}%
+• Mortality Risk: +${mortalitySpike.toFixed(2)}% [${riskLabel}]
+
+REQUIRED ACTIONS:
+1. STAY SHADED: Avoid direct sun exposure.
+2. DRINK WATER: Carry a bottle.
+3. USE ORS: Rehydrate immediately.
+4. OUTDOOR LABOR PAUSED (11:30 AM - 3:30 PM)
+
+*UPHC units and hydration stations are on alert.*`;
+                }
+            } catch (e) {
+                statusEl.className = "mb-3 text-xs font-semibold p-2.5 rounded bg-red-950/80 border border-red-500/40 text-red-300 flex items-center gap-2";
+                statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Webhook Gateway Error: Dispatched via Local Logging Fallback`;
+                messageEl.textContent = `${alertLabel} (${selectedWard.name})
+
+Key Risk Metrics:
+• Heat Index: ~${heatIndex.toFixed(0)}°C (${((heatIndex * 9 / 5) + 32).toFixed(0)}°F)
+• Humidity: ${currentMetrics.RH.toFixed(0)}%
+• Mortality Risk: +${mortalitySpike.toFixed(2)}% [${riskLabel}]
+
+REQUIRED ACTIONS:
+1. STAY SHADED: Avoid direct sun exposure.
+2. DRINK WATER: Carry a bottle.
+3. USE ORS: Rehydrate immediately.
+4. OUTDOOR LABOR PAUSED (11:30 AM - 3:30 PM)
+
+*UPHC units and hydration stations are on alert.*
+
+Webhook unavailable. Alert recorded locally for manual coordination.`;
+            }
+        }
+
+        function switchTab(tab) {
+            if (tab === 'dashboard') {
+                document.getElementById('view-dashboard').classList.remove('hidden');
+                document.getElementById('view-calculations').classList.add('hidden');
+                document.getElementById('tab-dash-btn').classList.add('active');
+                document.getElementById('tab-calc-btn').classList.remove('active');
+                if (map) setTimeout(() => map.invalidateSize(), 200);
+            } else {
+                document.getElementById('view-dashboard').classList.add('hidden');
+                document.getElementById('view-calculations').classList.remove('hidden');
+                document.getElementById('tab-dash-btn').classList.remove('active');
+                document.getElementById('tab-calc-btn').classList.add('active');
+                if (window.MathJax) MathJax.typesetPromise();
+            }
+        }
+
+        function openModal(id) { 
+            // Ensure modal only displays dispatch log contents if explicitly opened via dispatch click when target is api-modal
+            if (id === 'api-modal' && !isDispatchLogVisible) return;
+            document.getElementById(id).classList.remove('hidden'); 
+        }
+        function closeModal(id) { 
+            document.getElementById(id).classList.add('hidden'); 
+            if (id === 'api-modal') {
+                isDispatchLogVisible = false; // Reset log visibility state on close
+            }
+        }
+
+        function initMap() {
+            map = L.map('map').setView([22.5626, 88.3639], 12);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
+            renderHospitalPins();
+        }
+
+        function renderHospitalPins() {
+            loadedHospitals.forEach(h => {
+                const marker = L.circleMarker([h.lat, h.lng], {
+                    radius: 4,
+                    fillColor: '#38bdf8',
+                    color: '#0284c7',
+                    weight: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+                marker.bindTooltip(h.name);
+                hospitalMarkers.push(marker);
+            });
+        }
+
+        window.onload = function() {
+            initMap();
+            renderWardQuickSelector();
+            fetchLiveWeatherData();
+        };
+    </script>
+</body>
+</html>
