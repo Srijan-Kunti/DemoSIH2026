@@ -786,7 +786,8 @@
                 const Vi = 1.0 / (1.0 + (count / 10.0));
                 
                 // Exponential excess mortality spike calculation per ward
-                const mortalitySpike = Math.min(100, Math.max(0, (Math.pow(2.5, wardWBGT - 28) - 1) * Vi * 100));
+                const heatExcess = Math.max(0, wardWBGT - 28);
+                const mortalitySpike = Math.min(100, (Math.exp(0.083 * heatExcess) - 1) * Vi * 100);
 
                 let color = "#10b981";
                 if (mortalitySpike > 15) color = "#eab308";
@@ -840,7 +841,8 @@
 
             const count = countHospitalsForWard(selectedWard.lat, selectedWard.lng);
             const Vi = 1.0 / (1.0 + (count / 10.0));
-            const mortalitySpike = Math.min(100, Math.max(0, (Math.pow(2.5, WBGT - 28) - 1) * Vi * 100));
+            const heatExcess = Math.max(0, WBGT - 28);
+            const mortalitySpike = Math.min(100, (Math.exp(0.083 * heatExcess) - 1) * Vi * 100);
 
             document.getElementById('ward-hospitals').innerText = `${count} Facilities`;
             document.getElementById('ward-vi').innerText = Vi.toFixed(3);
@@ -964,7 +966,8 @@
             const count = countHospitalsForWard(selectedWard.lat, selectedWard.lng);
             const Vi = 1.0 / (1.0 + (count / 10.0));
             const wbgt = calculateWBGT(currentMetrics.Ta, currentMetrics.RH, currentMetrics.v10, currentMetrics.Rsolar, currentMetrics.cloudCover);
-            const mortalitySpike = Math.min(100, Math.max(0, (Math.pow(2.5, wbgt - 28) - 1) * Vi * 100));
+            const heatExcess = Math.max(0, wbgt - 28);
+            const mortalitySpike = Math.min(100, (Math.exp(0.083 * heatExcess) - 1) * Vi * 100);
             const assets = getReliefAssetsForWard(selectedWard.name);
             const heatIndex = calculateHeatIndex(currentMetrics.Ta, currentMetrics.RH);
             const riskLabel = mortalitySpike > 28 ? "RED" : mortalitySpike > 15 ? "ORANGE" : "AMBER";
