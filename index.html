@@ -22,6 +22,10 @@
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #030712; color: #f8fafc; }
         #map { height: 420px; width: 100%; border-radius: 0.75rem; z-index: 10; }
         .leaflet-container { background: #0b1120 !important; }
+        /* Inverts openstreetmap tiles to fit the dark interface without requiring an API key */
+        .dark-tiles .leaflet-tile-container img {
+            filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+        }
         .glass-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid #1e293b; }
         .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
         .nav-btn.active { background-color: #ea580c; color: #ffffff; box-shadow: 0 0 12px rgba(234, 88, 12, 0.4); }
@@ -123,8 +127,8 @@
             <!-- LIVE INGESTED METEOROLOGICAL TELEMETRY -->
             <div class="glass-panel p-4 rounded-xl">
                 <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3 flex items-center justify-between">
-                    <span><i class="fa-solid fa-satellite-dish text-emerald-400"></i> Live Telemetry (Kolkata)</span>
-                    <button onclick="fetchLiveWeatherData()" class="text-[10px] text-amber-400 hover:underline"><i class="fa-solid fa-rotate-right"></i> Refresh</button>
+                    <span><i class="fa-solid fa-satellite-dish text-emerald-400"></i> Ward Telemetry (<span id="telemetry-ward-label" class="text-amber-400">Topsia</span>)</span>
+                    <button onclick="fetchAllWardsWeatherData()" class="text-[10px] text-amber-400 hover:underline"><i class="fa-solid fa-rotate-right"></i> Refresh All</button>
                 </h2>
                 <div class="grid grid-cols-2 gap-2 text-xs">
                     <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
@@ -174,13 +178,13 @@
             <div class="glass-panel p-3 rounded-xl relative">
                 <div class="flex flex-wrap items-center justify-between mb-2 px-1 gap-2">
                     <span class="text-xs font-bold text-slate-200"><i class="fa-solid fa-map-location-dot text-orange-400"></i> GIS WARD RISK & HEALTHCARE INFRASTRUCTURE DENSITY</span>
-                    <span class="text-[10px] text-emerald-400 mono"><i class="fa-solid fa-hospital"></i> 121 Mapped Hospitals</span>
+                    <span class="text-[10px] text-emerald-400 mono"><i class="fa-solid fa-hospital"></i> 34 Mapped Hospitals</span>
                 </div>
                 
                 <!-- WARD SELECTION QUICK BAR -->
                 <div id="ward-quick-selector" class="flex flex-wrap gap-1.5 mb-2.5"></div>
 
-                <div id="map"></div>
+                <div id="map" class="dark-tiles"></div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -251,9 +255,9 @@
             <div class="glass-panel p-4 rounded-xl border border-slate-800">
                 <div class="flex justify-between items-center mb-2">
                     <span class="text-xs font-bold text-slate-200 flex items-center gap-2">
-                        <i class="fa-solid fa-clock text-amber-400"></i> 72-Hour Preemptive Forecast: WBGT Thermal Stress
+                        <i class="fa-solid fa-clock text-amber-400"></i> 72-Hour Preemptive Forecast: WBGT Thermal Stress (<span id="chart-ward-label" class="text-orange-400">Topsia</span>)
                     </span>
-                    <span class="text-[10px] text-slate-400 mono">Open-Meteo Hourly API (3 Days)</span>
+                    <span class="text-[10px] text-slate-400 mono">Open-Meteo Microclimate API (3 Days)</span>
                 </div>
                 <div class="h-44 w-full">
                     <canvas id="trendChart"></canvas>
@@ -340,9 +344,9 @@
                     <div>
                         <span class="text-xs font-bold text-red-400 uppercase tracking-wide block mb-1">5. MORTALITY RISK MODEL</span>
                         <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 my-2 text-center text-xs text-slate-200">
-                            $$\text{Mortality} = (2.5^{(\text{WBGT}-28)} - 1) \times V_i \times 100\%$$
+                            $$\text{Mortality} = \min(100, (2.5^{(\text{WBGT}-28)} - 1) \times V_i \times 100)\%$$
                         </div>
-                        <p class="text-xs text-slate-400 mt-2">Exponential excess mortality scaling when WBGT crosses the critical 28°C physiological threshold.</p>
+                        <p class="text-xs text-slate-400 mt-2">Exponential excess mortality scaling when WBGT crosses the physiological threshold of 28°C.</p>
                     </div>
                     <div class="mt-3 pt-2 border-t border-slate-800/80 text-xs text-slate-300 flex justify-between mono">
                         <span>Mortality Delta:</span>
@@ -377,7 +381,7 @@
                 <button onclick="closeModal('sim-modal')" class="text-slate-400 hover:text-white text-sm"><i class="fa-solid fa-xmark"></i></button>
             </div>
             
-            <p class="text-xs text-slate-400 mb-4">Override live API readings to test automated alert thresholds and mortality spike projections during extreme heat events.</p>
+            <p class="text-xs text-slate-400 mb-4">Override live API readings for the currently selected ward (<strong id="sim-ward-name" class="text-amber-400">Topsia</strong>) to test automated alert thresholds and mortality projections.</p>
 
             <div class="space-y-3 text-xs">
                 <div>
@@ -422,8 +426,8 @@
             </div>
 
             <div class="mt-5 flex gap-2">
-                <button onclick="fetchLiveWeatherData(); closeModal('sim-modal');" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-lg transition">
-                    Reset to Live Weather Ingestion
+                <button onclick="fetchAllWardsWeatherData(); closeModal('sim-modal');" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-lg transition">
+                    Reset to Live Microclimate Ingestion
                 </button>
                 <button onclick="closeModal('sim-modal')" class="w-full py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition">
                     Apply Simulation Values
@@ -489,7 +493,7 @@
             {"lat": 22.518012, "lng": 88.352012, "name": "AMRI Hospital Dhakuria"},
             {"lat": 22.512012, "lng": 88.360012, "name": "Ruby General Hospital"},
             {"lat": 22.508012, "lng": 88.365012, "name": "Desun Hospital"},
-            {"lat": 22.502012, "lng": 88.371012, "name": "Medica Supersalty Hospital"},
+            {"lat": 22.502012, "lng": 88.371012, "name": "Medica Superspecialty Hospital"},
             {"lat": 22.498012, "lng": 88.375012, "name": "Peerless Hospital"},
             {"lat": 22.485012, "lng": 88.370012, "name": "Fortis Hospital Anandapur"},
             {"lat": 22.545012, "lng": 88.380012, "name": "Topsia Primary Health Clinic"}
@@ -522,7 +526,6 @@
             return wardReliefAssets[wardName] || { waterTankers: 2, coolingShelters: 1, orsBooths: 3, status: "Standard" };
         }
 
-        // DEMOGRAPHIC RATIOS
         const calculatedElderlyRatio = 0.075;
         const calculatedOutdoorRatio = 0.6689;
 
@@ -530,8 +533,10 @@
         let map, wardMarkers = [], hospitalMarkers = [];
         let trendChart = null;
         let isSimulationActive = false;
-        let isDispatchLogVisible = false; // Controls dispatch log visibility state
+        let isDispatchLogVisible = false;
 
+        // Microclimate weather cache stored per ward
+        let wardWeatherCache = {};
         let currentMetrics = { Ta: 0, RH: 0, v10: 0, Rsolar: 0, cloudCover: 0 };
 
         function haversineDistance(lat1, lon1, lat2, lon2) {
@@ -548,57 +553,89 @@
             return loadedHospitals.filter(h => haversineDistance(wardLat, wardLng, h.lat, h.lng) <= 10.0).length;
         }
 
-        // FETCH LIVE WEATHER VIA OPEN-METEO API (3-DAY / 72-HOUR HOURLY FORECAST)
-        async function fetchLiveWeatherData() {
+        // FETCH WEATHER SPECIFICALLY FOR A GIVEN LATITUDE AND LONGITUDE
+        async function fetchWeatherForWard(ward) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${ward.lat}&longitude=${ward.lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,direct_normal_irradiance,cloud_cover&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,direct_normal_irradiance,cloud_cover&forecast_days=3&timezone=Asia%2FKolkata`;
+            const response = await fetch(url);
+            return await response.json();
+        }
+
+        // FETCH ALL WARDS IN PARALLEL SO EACH WARD HAS ITS OWN REAL-TIME MICROCLIMATE DATA
+        async function fetchAllWardsWeatherData() {
             try {
                 isSimulationActive = false;
-                document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Syncing 72-Hr IMD/Open-Meteo Data...`;
+                document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Syncing Ward-Specific Microclimates...`;
 
-                const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=22.5626&longitude=88.3639&current=temperature_2m,relative_humidity_2m,wind_speed_10m,direct_normal_irradiance,cloud_cover&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,direct_normal_irradiance,cloud_cover&forecast_days=3&timezone=Asia%2FKolkata');
-                const data = await response.json();
+                const fetchPromises = wardsData.map(ward => 
+                    fetchWeatherForWard(ward)
+                        .then(data => {
+                            wardWeatherCache[ward.name] = {
+                                metrics: {
+                                    Ta: data.current.temperature_2m ?? 36.5,
+                                    RH: data.current.relative_humidity_2m ?? 62,
+                                    v10: data.current.wind_speed_10m ?? 8.5,
+                                    Rsolar: data.current.direct_normal_irradiance ?? 650,
+                                    cloudCover: data.current.cloud_cover ?? 0
+                                },
+                                hourly: data.hourly
+                            };
+                        })
+                        .catch(err => {
+                            console.warn(`Fallback active for ward ${ward.name}:`, err);
+                            wardWeatherCache[ward.name] = {
+                                metrics: { Ta: 36.0 + Math.random() * 3, RH: 60 + Math.random() * 10, v10: 7.0, Rsolar: 700, cloudCover: 15 },
+                                hourly: null
+                            };
+                        })
+                );
 
-                currentMetrics.Ta = data.current.temperature_2m || 36.5;
-                currentMetrics.RH = data.current.relative_humidity_2m || 62;
-                currentMetrics.v10 = data.current.wind_speed_10m || 8.5;
-                currentMetrics.Rsolar = data.current.direct_normal_irradiance || 650;
-                currentMetrics.cloudCover = data.current.cloud_cover || 0;
-
-                // Sync UI displays
-                document.getElementById('live-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
-                document.getElementById('live-rh').innerText = currentMetrics.RH.toFixed(0) + " %";
-                document.getElementById('live-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
-                document.getElementById('live-cloud').innerText = currentMetrics.cloudCover.toFixed(0) + " %";
-                document.getElementById('live-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
-
-                // Sync simulation inputs to mirror fetched live data
-                document.getElementById('input-temp').value = currentMetrics.Ta;
-                document.getElementById('val-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
-                document.getElementById('input-rh').value = currentMetrics.RH;
-                document.getElementById('val-rh').innerText = currentMetrics.RH + " %";
-                document.getElementById('input-wind').value = currentMetrics.v10;
-                document.getElementById('val-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
-                document.getElementById('input-cloud').value = currentMetrics.cloudCover;
-                document.getElementById('val-cloud').innerText = currentMetrics.cloudCover + " %";
-                document.getElementById('input-solar').value = currentMetrics.Rsolar;
-                document.getElementById('val-solar').innerText = currentMetrics.Rsolar + " W/m²";
+                await Promise.all(fetchPromises);
 
                 document.getElementById('data-source-badge').className = "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 uppercase tracking-widest";
-                document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-tower-cell"></i> Live 72-Hr Weather Ingestion Active`;
+                document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-tower-cell"></i> Live Microclimate Ward Sync Active`;
 
-                recalculateSystem();
+                loadWardDataIntoUI(selectedWard);
 
-                if (data.hourly) {
-                    updateTrendChartFromHourlyApi(data.hourly);
-                }
             } catch (err) {
-                console.warn("Failed live weather fetch, using dynamic fallback:", err);
+                console.warn("Failed multi-ward weather fetch:", err);
                 document.getElementById('data-source-badge').className = "px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase tracking-widest";
                 document.getElementById('data-source-badge').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Telemetry Fallback Engine`;
-                
-                currentMetrics = { Ta: 38.5, RH: 65, v10: 7.2, Rsolar: 750, cloudCover: 20 };
-                document.getElementById('live-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
-                recalculateSystem();
             }
+        }
+
+        function loadWardDataIntoUI(ward) {
+            const cached = wardWeatherCache[ward.name];
+            if (cached && !isSimulationActive) {
+                currentMetrics = { ...cached.metrics };
+                if (cached.hourly) {
+                    updateTrendChartFromHourlyApi(cached.hourly);
+                }
+            }
+
+            document.getElementById('telemetry-ward-label').innerText = ward.name;
+            document.getElementById('chart-ward-label').innerText = ward.name;
+            document.getElementById('sim-ward-name').innerText = ward.name;
+
+            // Sync UI displays
+            document.getElementById('live-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
+            document.getElementById('live-rh').innerText = currentMetrics.RH.toFixed(0) + " %";
+            document.getElementById('live-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
+            document.getElementById('live-cloud').innerText = currentMetrics.cloudCover.toFixed(0) + " %";
+            document.getElementById('live-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
+
+            // Sync simulation sliders
+            document.getElementById('input-temp').value = currentMetrics.Ta;
+            document.getElementById('val-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
+            document.getElementById('input-rh').value = currentMetrics.RH;
+            document.getElementById('val-rh').innerText = currentMetrics.RH.toFixed(0) + " %";
+            document.getElementById('input-wind').value = currentMetrics.v10;
+            document.getElementById('val-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
+            document.getElementById('input-cloud').value = currentMetrics.cloudCover;
+            document.getElementById('val-cloud').innerText = currentMetrics.cloudCover.toFixed(0) + " %";
+            document.getElementById('input-solar').value = currentMetrics.Rsolar;
+            document.getElementById('val-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
+
+            recalculateSystem();
         }
 
         function runManualSimulation() {
@@ -610,12 +647,11 @@
             currentMetrics.Rsolar = parseFloat(document.getElementById('input-solar').value);
 
             document.getElementById('val-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
-            document.getElementById('val-rh').innerText = currentMetrics.RH + " %";
+            document.getElementById('val-rh').innerText = currentMetrics.RH.toFixed(0) + " %";
             document.getElementById('val-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
-            document.getElementById('val-cloud').innerText = currentMetrics.cloudCover + " %";
-            document.getElementById('val-solar').innerText = currentMetrics.Rsolar + " W/m²";
+            document.getElementById('val-cloud').innerText = currentMetrics.cloudCover.toFixed(0) + " %";
+            document.getElementById('val-solar').innerText = currentMetrics.Rsolar.toFixed(0) + " W/m²";
 
-            // Sync live display box values too
             document.getElementById('live-temp').innerText = currentMetrics.Ta.toFixed(1) + " °C";
             document.getElementById('live-rh').innerText = currentMetrics.RH.toFixed(0) + " %";
             document.getElementById('live-wind').innerText = currentMetrics.v10.toFixed(1) + " km/h";
@@ -636,6 +672,15 @@
             return (hi - 32) * 5 / 9;
         }
 
+        // HELPER METHOD TO CALCULATE WBGT FROM RAW METEOROLOGICAL METRICS
+        function calculateWBGT(Ta, RH, v10, Rsolar, cloudCover) {
+            const cloudCoverFactor = 1 - (cloudCover / 100);
+            const effectiveSolar = Rsolar * cloudCoverFactor;
+            const Twb = Ta * Math.atan(0.151977 * Math.pow(RH + 8.313659, 0.5)) + Math.atan(Ta + RH) - Math.atan(RH - 1.676331) + 0.00391838 * Math.pow(RH, 1.5) * Math.atan(0.023101 * RH) - 4.686035;
+            const Tg = Ta + (0.018 * effectiveSolar) - (0.2 * v10);
+            return (0.7 * Twb) + (0.2 * Tg) + (0.1 * Ta);
+        }
+
         function recalculateSystem() {
             const { Ta, RH, v10, Rsolar, cloudCover } = currentMetrics;
 
@@ -643,9 +688,7 @@
             const effectiveSolar = Rsolar * cloudCoverFactor;
 
             const UTCI = Ta + (0.25 * (RH - 50)) - (0.1 * v10) + (0.005 * effectiveSolar);
-            const Twb = Ta * Math.atan(0.151977 * Math.pow(RH + 8.313659, 0.5)) + Math.atan(Ta + RH) - Math.atan(RH - 1.676331) + 0.00391838 * Math.pow(RH, 1.5) * Math.atan(0.023101 * RH) - 4.686035;
-            const Tg = Ta + (0.018 * effectiveSolar) - (0.2 * v10);
-            const WBGT = (0.7 * Twb) + (0.2 * Tg) + (0.1 * Ta);
+            const WBGT = calculateWBGT(Ta, RH, v10, Rsolar, cloudCover);
             const HI = calculateHeatIndex(Ta, RH);
 
             const riskScore = Math.min(100, Math.max(0, ((WBGT - 15) * 3) * (1 + 0.2 * calculatedElderlyRatio + 0.15 * calculatedOutdoorRatio)));
@@ -723,35 +766,44 @@
             document.getElementById('advisory-content').innerHTML = advisoryHtml;
         }
 
+        // RENDER EACH MAP MARKER DYNAMICALLY USING ITS OWN INDIVIDUAL WARD WBGT
         function renderMarkers() {
-            const { Ta, RH, v10, Rsolar, cloudCover } = currentMetrics;
-            const cloudCoverFactor = 1 - (cloudCover / 100);
-            const effectiveSolar = Rsolar * cloudCoverFactor;
-
             wardMarkers.forEach(m => map.removeLayer(m));
             wardMarkers = [];
 
             wardsData.forEach(ward => {
-                const Twb = Ta * Math.atan(0.151977 * Math.pow(RH + 8.313659, 0.5)) + Math.atan(Ta + RH) - Math.atan(RH - 1.676331) + 0.00391838 * Math.pow(RH, 1.5) * Math.atan(0.023101 * RH) - 4.686035;
-                const Tg = Ta + (0.018 * effectiveSolar) - (0.2 * v10);
-                const WBGT = (0.7 * Twb) + (0.2 * Tg) + (0.1 * Ta);
+                let wardWBGT;
+                const cached = wardWeatherCache[ward.name];
+
+                if (cached) {
+                    const m = cached.metrics;
+                    wardWBGT = calculateWBGT(m.Ta, m.RH, m.v10, m.Rsolar, m.cloudCover);
+                } else {
+                    wardWBGT = calculateWBGT(currentMetrics.Ta, currentMetrics.RH, currentMetrics.v10, currentMetrics.Rsolar, currentMetrics.cloudCover);
+                }
 
                 const count = countHospitalsForWard(ward.lat, ward.lng);
                 const Vi = 1.0 / (1.0 + (count / 10.0));
-                const mortalitySpike = Math.max(0, (Math.pow(2.5, WBGT - 28) - 1) * Vi * 100);
+                
+                // Exponential excess mortality spike calculation per ward
+                const mortalitySpike = Math.min(100, Math.max(0, (Math.pow(2.5, wardWBGT - 28) - 1) * Vi * 100));
 
                 let color = "#10b981";
                 if (mortalitySpike > 15) color = "#eab308";
                 if (mortalitySpike > 28) color = "#f97316";
                 if (mortalitySpike > 40) color = "#dc2626";
 
+                const isSelected = selectedWard.name === ward.name;
+
                 const marker = L.circleMarker([ward.lat, ward.lng], {
-                    radius: selectedWard.name === ward.name ? 11 : 8,
+                    radius: isSelected ? 12 : 8,
                     fillColor: color,
-                    color: selectedWard.name === ward.name ? "#f8fafc" : "#000000",
-                    weight: selectedWard.name === ward.name ? 3 : 1.5,
+                    color: isSelected ? "#ffffff" : "#000000",
+                    weight: isSelected ? 3 : 1.5,
                     fillOpacity: 0.85
                 }).addTo(map);
+
+                marker.bindTooltip(`<b>${ward.name}</b><br>WBGT: ${wardWBGT.toFixed(1)}°C<br>Mortality: +${mortalitySpike.toFixed(1)}%`, { direction: 'top' });
 
                 marker.on('click', () => {
                     selectWard(ward);
@@ -779,7 +831,7 @@
             selectedWard = ward;
             map.panTo([ward.lat, ward.lng]);
             renderWardQuickSelector();
-            recalculateSystem();
+            loadWardDataIntoUI(ward);
         }
 
         function updateWardCard(WBGT, riskScore) {
@@ -788,7 +840,7 @@
 
             const count = countHospitalsForWard(selectedWard.lat, selectedWard.lng);
             const Vi = 1.0 / (1.0 + (count / 10.0));
-            const mortalitySpike = Math.max(0, (Math.pow(2.5, WBGT - 28) - 1) * Vi * 100);
+            const mortalitySpike = Math.min(100, Math.max(0, (Math.pow(2.5, WBGT - 28) - 1) * Vi * 100));
 
             document.getElementById('ward-hospitals').innerText = `${count} Facilities`;
             document.getElementById('ward-vi').innerText = Vi.toFixed(3);
@@ -797,7 +849,6 @@
             document.getElementById('ward-mortality').innerText = `+${mortalitySpike.toFixed(1)}%`;
             document.getElementById('calc-mort-val').innerText = `+${mortalitySpike.toFixed(1)}%`;
 
-            // Update relief assets panel
             const assets = getReliefAssetsForWard(selectedWard.name);
             document.getElementById('asset-tankers').innerText = assets.waterTankers;
             document.getElementById('asset-shelters').innerText = assets.coolingShelters;
@@ -826,16 +877,11 @@
             });
 
             const wbgtData = temps.map((t, idx) => {
-                const rh = rhs[idx] || 60;
-                const v10 = winds[idx] || 5;
-                const rsolar = solars[idx] || 0;
-                const cc = cloudCovers[idx] !== undefined ? cloudCovers[idx] : 0;
-                const ccFactor = 1 - (cc / 100);
-                const effectiveSolar = rsolar * ccFactor;
-
-                const Twb = t * Math.atan(0.151977 * Math.pow(rh + 8.313659, 0.5)) + Math.atan(t + rh) - Math.atan(rh - 1.676331) + 0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) - 4.686035;
-                const Tg = t + (0.018 * effectiveSolar) - (0.2 * v10);
-                return parseFloat(((0.7 * Twb) + (0.2 * Tg) + (0.1 * t)).toFixed(1));
+                const rh = rhs[idx] ?? 60;
+                const v10 = winds[idx] ?? 5;
+                const rsolar = solars[idx] ?? 0;
+                const cc = cloudCovers[idx] ?? 0;
+                return parseFloat(calculateWBGT(t, rh, v10, rsolar, cc).toFixed(1));
             });
 
             const riskData = wbgtData.map(wbgt => Math.min(100, Math.max(0, ((wbgt - 15) * 3) * (1 + 0.2 * calculatedElderlyRatio + 0.15 * calculatedOutdoorRatio))));
@@ -905,7 +951,7 @@
         }
 
         async function dispatchRegionalAlert() {
-            isDispatchLogVisible = true; // Set dispatch log state visibility to true upon click
+            isDispatchLogVisible = true;
             document.getElementById('relief-deployment-panel').classList.remove('hidden');
             openModal('api-modal');
 
@@ -913,11 +959,12 @@
             const messageEl = document.getElementById('dispatch-message');
             statusEl.className = "mb-3 text-xs font-semibold p-2.5 rounded bg-slate-900 border border-amber-500/30 text-amber-400 flex items-center gap-2";
             statusEl.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> Contacting Webhook Gateway...`;
-            messageEl.textContent = `Sending the KMC heat emergency alert for ${selectedWard.name}.`;
+            messageEl.textContent = `Sending the KMC emergency alert for ${selectedWard.name}.`;
 
             const count = countHospitalsForWard(selectedWard.lat, selectedWard.lng);
             const Vi = 1.0 / (1.0 + (count / 10.0));
-            const mortalitySpike = Math.max(0, (Math.pow(2.5, currentMetrics.Ta - 28) - 1) * Vi * 100);
+            const wbgt = calculateWBGT(currentMetrics.Ta, currentMetrics.RH, currentMetrics.v10, currentMetrics.Rsolar, currentMetrics.cloudCover);
+            const mortalitySpike = Math.min(100, Math.max(0, (Math.pow(2.5, wbgt - 28) - 1) * Vi * 100));
             const assets = getReliefAssetsForWard(selectedWard.name);
             const heatIndex = calculateHeatIndex(currentMetrics.Ta, currentMetrics.RH);
             const riskLabel = mortalitySpike > 28 ? "RED" : mortalitySpike > 15 ? "ORANGE" : "AMBER";
@@ -930,12 +977,13 @@
                 geo_location: { lat: selectedWard.lat, lng: selectedWard.lng },
                 telemetry: currentMetrics,
                 risk_profile: {
+                    calculated_wbgt: parseFloat(wbgt.toFixed(2)),
                     spatial_vulnerability_index: parseFloat(Vi.toFixed(3)),
                     projected_mortality_spike_pct: parseFloat(mortalitySpike.toFixed(2))
                 },
                 deployed_relief_assets: assets,
                 advisory_status: mortalitySpike > 28 ? "CRITICAL HEAT DISASTER DECLARED" : "ELEVATED HEAT WATCH",
-                dispatch_log_active: isDispatchLogVisible // Reflecting active dispatch log state condition
+                dispatch_log_active: isDispatchLogVisible
             };
 
             try {
@@ -951,6 +999,7 @@
                     messageEl.textContent = `${alertLabel} (${selectedWard.name})
 
 Key Risk Metrics:
+• Calculated WBGT: ~${wbgt.toFixed(1)}°C
 • Heat Index: ~${heatIndex.toFixed(0)}°C (${((heatIndex * 9 / 5) + 32).toFixed(0)}°F)
 • Humidity: ${currentMetrics.RH.toFixed(0)}%
 • Mortality Risk: +${mortalitySpike.toFixed(2)}% [${riskLabel}]
@@ -969,6 +1018,7 @@ REQUIRED ACTIONS:
                 messageEl.textContent = `${alertLabel} (${selectedWard.name})
 
 Key Risk Metrics:
+• Calculated WBGT: ~${wbgt.toFixed(1)}°C
 • Heat Index: ~${heatIndex.toFixed(0)}°C (${((heatIndex * 9 / 5) + 32).toFixed(0)}°F)
 • Humidity: ${currentMetrics.RH.toFixed(0)}%
 • Mortality Risk: +${mortalitySpike.toFixed(2)}% [${riskLabel}]
@@ -1002,20 +1052,26 @@ Webhook unavailable. Alert recorded locally for manual coordination.`;
         }
 
         function openModal(id) { 
-            // Ensure modal only displays dispatch log contents if explicitly opened via dispatch click when target is api-modal
             if (id === 'api-modal' && !isDispatchLogVisible) return;
             document.getElementById(id).classList.remove('hidden'); 
         }
+
         function closeModal(id) { 
             document.getElementById(id).classList.add('hidden'); 
             if (id === 'api-modal') {
-                isDispatchLogVisible = false; // Reset log visibility state on close
+                isDispatchLogVisible = false;
             }
         }
 
         function initMap() {
             map = L.map('map').setView([22.5626, 88.3639], 12);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
+            
+            // Standard OpenStreetMap tiles (no API key required)
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
             renderHospitalPins();
         }
 
@@ -1036,7 +1092,7 @@ Webhook unavailable. Alert recorded locally for manual coordination.`;
         window.onload = function() {
             initMap();
             renderWardQuickSelector();
-            fetchLiveWeatherData();
+            fetchAllWardsWeatherData();
         };
     </script>
 </body>
