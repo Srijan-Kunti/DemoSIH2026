@@ -1,0 +1,12 @@
+body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #030712; color: #f8fafc; }
+#map { height: 420px; width: 100%; border-radius: 0.75rem; z-index: 10; }
+.leaflet-container { background: #0b1120 !important; }
+
+/* Inverts openstreetmap tiles cleanly to match dark UI while preventing text overlay skew */
+.dark-tiles .leaflet-tile-pane {
+    filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+
+.glass-panel { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid #1e293b; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.nav-btn.active { background-color: #ea580c; color: #ffffff; box-shadow: 0 0 12px rgba(234, 88, 12, 0.4); }
